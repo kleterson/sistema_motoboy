@@ -38,7 +38,7 @@ db.serialize(() => {
 // Middlewares
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'PUBLIC')));
 app.use(session({
     secret: 'motoboy_secret_key_99',
     resave: false,
