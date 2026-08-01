@@ -38,13 +38,20 @@ db.serialize(() => {
 // Middlewares
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+// Corrigido para 'PUBLIC' em letra maiúscula para bater com a sua pasta
 app.use(express.static(path.join(__dirname, 'PUBLIC')));
+
 app.use(session({
     secret: 'motoboy_secret_key_99',
     resave: false,
     saveUninitialized: false,
     cookie: { maxAge: 24 * 60 * 60 * 1000 } // 1 dia
 }));
+
+// Rota explícita para garantir a página inicial
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'PUBLIC', 'index.html'));
+});
 
 // Rotas de Autenticação
 app.post('/api/auth', async (req, res) => {
