@@ -1,8 +1,8 @@
 <?php
-$host = 'localhost';
-$user = 'root';
-$password = '';
-$dbname = 'sistema_motoboy';
+$host = 'SEU_HOST_AQUI';
+$user = 'SEU_USUARIO_AQUI';
+$password = 'SUA_SENHA_AQUI';
+$dbname = 'NOME_DO_BANCO_AQUI';
 
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $user, $password);
