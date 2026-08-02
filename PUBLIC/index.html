@@ -337,6 +337,16 @@
         }
 
         async function carregarDados() {
+            if (dataExpiracaoGlobal && new Date() > new Date(dataExpiracaoGlobal)) {
+                document.querySelector('.container').innerHTML = `
+                    <div style="text-align: center; padding: 50px; background: #1e1e1e; border-radius: 12px; border: 1px solid #ff4444; margin-top: 50px;">
+                        <h2 style="color: #ff4444; font-size: 24px; margin-bottom: 15px;">⚠️ Seu período de teste expirou!</h2>
+                        <p style="color: #ccc; font-size: 16px; margin-bottom: 20px;">Para continuar gerenciando suas entregas e finanças, entre em contato para renovar o seu acesso.</p>
+                    </div>
+                `;
+                return;
+            }
+
             const res = await fetch('/api/dados');
             if (res.status === 401) return verificarSessao();
             const data = await res.json();
