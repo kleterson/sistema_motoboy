@@ -17,7 +17,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
     }
 });
 
-// Criar tabelas necessárias se não existirem (com suporte a ip_cadastro)
+// Criar tabelas necessárias se não existirem (com suporte a is_admin e ip_cadastro)
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS usuarios (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,6 +25,7 @@ db.serialize(() => {
         email TEXT UNIQUE,
         senha TEXT,
         data_expiracao DATETIME,
+        is_admin INTEGER DEFAULT 0,
         ip_cadastro TEXT
     )`);
 
@@ -64,7 +65,8 @@ app.get('/api/session', (req, res) => {
                 logado: true,
                 nome: usuario.nome,
                 email: usuario.email,
-                data_expiracao: usuario.data_expiracao
+                data_expiracao: usuario.data_expiracao,
+                is_admin: usuario.is_admin
             });
         });
     } else {
@@ -77,10 +79,8 @@ app.post('/api/auth', async (req, res) => {
     const { acao, nome, email, senha } = req.body;
 
     if (acao === 'cadastrar') {
-        // Pega o IP real do usuário (compatível com proxies como o Render)
         const ipUser = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
-        // Verifica se já existe um cadastro efetuado por este IP
         db.get(`SELECT id FROM usuarios WHERE ip_cadastro = ?`, [ipUser], async (err, row) => {
             if (row) {
                 return res.json({ 
@@ -91,12 +91,10 @@ app.post('/api/auth', async (req, res) => {
 
             try {
                 const senhaHash = await bcrypt.hash(senha, 10);
-                
-                // Define 3 dias de teste grátis
                 const dataExpiracao = new Date();
                 dataExpiracao.setDate(dataExpiracao.getDate() + 3);
 
-                db.run(`INSERT INTO usuarios (nome, email, senha, data_expiracao, ip_cadastro) VALUES (?, ?, ?, ?, ?)`,
+                db.run(`INSERT INTO usuarios (nome, email, senha, data_expiracao, is_admin, ip_cadastro) VALUES (?, ?, ?, ?, 0, ?)`,
                     [nome, email, senhaHash, dataExpiracao.toISOString(), ipUser],
                     function(err) {
                         if (err) {
@@ -121,10 +119,55 @@ app.post('/api/auth', async (req, res) => {
             }
 
             req.session.userId = usuario.id;
+            req.session.nome = usuario.nome;
+            req.session.is_admin = usuario.is_admin;
             res.json({ sucesso: true });
         });
     }
 });
+
+// ==========================================
+// ROTAS DO PAINEL ADMINISTRADOR
+// ==========================================
+
+function isAdmin(req, res, next) {
+    if (req.session && req.session.is_admin === 1) {
+        return next();
+    }
+    return res.status(403).json({ sucesso: false, mensagem: 'Acesso negado. Apenas administradores.' });
+}
+
+app.get('/api/admin/usuarios', isAdmin, (req, res) => {
+    db.all("SELECT id, nome, email, data_expiracao, is_admin FROM usuarios", [], (err, rows) => {
+        if (err) return res.status(500).json({ erro: err.message });
+        res.json(rows);
+    });
+});
+
+app.post('/api/admin/renovar/:id', isAdmin, (req, res) => {
+    const userId = req.params.id;
+    
+    db.get("SELECT data_expiracao FROM usuarios WHERE id = ?", [userId], (err, row) => {
+        if (err || !row) return res.status(404).json({ sucesso: false, mensagem: 'Usuário não encontrado.' });
+
+        let baseDate = new Date();
+        const dataAtualExp = new Date(row.data_expiracao);
+        
+        if (dataAtualExp > baseDate) {
+            baseDate = dataAtualExp;
+        }
+
+        baseDate.setDate(baseDate.getDate() + 30);
+        const novaExpiracao = baseDate.toISOString();
+
+        db.run("UPDATE usuarios SET data_expiracao = ? WHERE id = ?", [novaExpiracao, userId], function(err) {
+            if (err) return res.status(500).json({ sucesso: false, mensagem: 'Erro ao atualizar.' });
+            res.json({ sucesso: true, mensagem: 'Assinatura renovada com sucesso por 30 dias!' });
+        });
+    });
+});
+
+// ==========================================
 
 // Rota de Logout
 app.get('/api/logout', (req, res) => {
