@@ -14,32 +14,52 @@ const db = new sqlite3.Database(dbPath, (err) => {
         console.error('Erro ao abrir o banco de dados', err.message);
     } else {
         console.log('Conectado ao banco de dados SQLite.');
+        inicializarAdminMaster();
     }
 });
 
-// Criar tabelas necessárias se não existirem
-db.serialize(() => {
-    db.run(`CREATE TABLE IF NOT EXISTS usuarios (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nome TEXT,
-        email TEXT UNIQUE,
-        senha TEXT,
-        data_expiracao DATETIME,
-        is_admin INTEGER DEFAULT 0,
-        status TEXT DEFAULT 'ativo'
-    )`);
+// Criar tabelas e garantir o Admin padrão
+function inicializarAdminMaster() {
+    db.serialize(async () => {
+        db.run(`CREATE TABLE IF NOT EXISTS usuarios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT,
+            email TEXT UNIQUE,
+            senha TEXT,
+            data_expiracao DATETIME,
+            is_admin INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'ativo'
+        )`);
 
-    db.run(`CREATE TABLE IF NOT EXISTS lancamentos (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        usuario_id INTEGER,
-        tipo TEXT,
-        categoria TEXT,
-        valor REAL,
-        descricao TEXT,
-        data_lancamento TEXT,
-        FOREIGN KEY(usuario_id) REFERENCES usuarios(id)
-    )`);
-});
+        db.run(`CREATE TABLE IF NOT EXISTS lancamentos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER,
+            tipo TEXT,
+            categoria TEXT,
+            valor REAL,
+            descricao TEXT,
+            data_lancamento TEXT,
+            FOREIGN KEY(usuario_id) REFERENCES usuarios(id)
+        )`);
+
+        // Garante que o Admin Mestre sempre existe ao ligar o servidor
+        const emailAdmin = 'admin@gmail.com';
+        db.get(`SELECT id FROM usuarios WHERE email = ?`, [emailAdmin], async (err, row) => {
+            if (!row) {
+                const senhaHash = await bcrypt.hash('1234', 10); // Senha padrão inicial: 1234 (você pode alterar depois)
+                const dataExpiracao = new Date();
+                dataExpiracao.setFullYear(dataExpiracao.getFullYear() + 100);
+
+                db.run(`INSERT INTO usuarios (nome, email, senha, data_expiracao, is_admin, status) VALUES (?, ?, ?, ?, 1, 'ativo')`,
+                    ['Administrador', emailAdmin, senhaHash, dataExpiracao.toISOString()],
+                    (err) => {
+                        if (!err) console.log('Usuário Administrador criado/restaurado com sucesso! E-mail: admin@gmail.com / Senha: 1234');
+                    }
+                );
+            }
+        });
+    });
+}
 
 // Middlewares
 app.use(express.json());
@@ -67,7 +87,6 @@ app.get('/api/session', (req, res) => {
                 return res.json({ logado: false });
             }
             
-            // Verifica se o usuário foi bloqueado ou expirou
             const agora = new Date();
             const expiracao = new Date(usuario.data_expiracao);
             if (usuario.status === 'bloqueado' || (usuario.is_admin === 0 && expiracao < agora)) {
@@ -94,16 +113,14 @@ app.post('/api/auth', async (req, res) => {
     if (acao === 'cadastrar') {
         try {
             const senhaHash = await bcrypt.hash(senha, 10);
-            
-            // SEU E-MAIL DE ADMIN EXCLUSIVO
             const emailAdminMestre = 'admin@gmail.com'; 
             const isAdminUser = (email.toLowerCase() === emailAdminMestre) ? 1 : 0;
 
             const dataExpiracao = new Date();
             if (isAdminUser === 1) {
-                dataExpiracao.setFullYear(dataExpiracao.getFullYear() + 100); // Admin ilimitado (100 anos)
+                dataExpiracao.setFullYear(dataExpiracao.getFullYear() + 100);
             } else {
-                dataExpiracao.setDate(dataExpiracao.getDate() + 3); // Usuário comum (3 dias)
+                dataExpiracao.setDate(dataExpiracao.getDate() + 3);
             }
 
             db.run(`INSERT INTO usuarios (nome, email, senha, data_expiracao, is_admin, status) VALUES (?, ?, ?, ?, ?, 'ativo')`,
@@ -155,7 +172,6 @@ function isAdmin(req, res, next) {
     return res.status(403).json({ sucesso: false, mensagem: 'Acesso negado. Apenas o administrador mestre.' });
 }
 
-// Listar todos os usuários no painel
 app.get('/api/admin/usuarios', isAdmin, (req, res) => {
     db.all("SELECT id, nome, email, data_expiracao, is_admin, status FROM usuarios", [], (err, rows) => {
         if (err) return res.status(500).json({ erro: err.message });
@@ -163,7 +179,6 @@ app.get('/api/admin/usuarios', isAdmin, (req, res) => {
     });
 });
 
-// Renovar assinatura do usuário (+30 dias)
 app.post('/api/admin/renovar/:id', isAdmin, (req, res) => {
     const userId = req.params.id;
     
@@ -187,7 +202,6 @@ app.post('/api/admin/renovar/:id', isAdmin, (req, res) => {
     });
 });
 
-// Bloquear ou Desbloquear usuário
 app.post('/api/admin/bloquear/:id', isAdmin, (req, res) => {
     const userId = req.params.id;
 
@@ -203,11 +217,9 @@ app.post('/api/admin/bloquear/:id', isAdmin, (req, res) => {
     });
 });
 
-// Excluir usuário do painel (Compatível com o frontend /api/admin/usuarios/:id)
 app.delete('/api/admin/usuarios/:id', isAdmin, (req, res) => {
     const userId = req.params.id;
 
-    // Impede que o admin exclua a si mesmo acidentalmente
     if (userId == req.session.userId) {
         return res.status(400).json({ sucesso: false, mensagem: 'Você não pode excluir sua própria conta de Administrador Master!' });
     }
@@ -220,14 +232,12 @@ app.delete('/api/admin/usuarios/:id', isAdmin, (req, res) => {
 
 // ==========================================
 
-// Rota de Logout
 app.get('/api/logout', (req, res) => {
     req.session.destroy(() => {
         res.redirect('/');
     });
 });
 
-// Rota para buscar dados do dashboard
 app.get('/api/dados', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ erro: 'Não autorizado' });
 
@@ -271,7 +281,6 @@ app.get('/api/dados', (req, res) => {
     });
 });
 
-// Adicionar Lançamento
 app.post('/api/lancamentos', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ erro: 'Não autorizado' });
 
@@ -288,7 +297,6 @@ app.post('/api/lancamentos', (req, res) => {
     );
 });
 
-// Deletar Lançamento
 app.delete('/api/lancamentos/:id', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ erro: 'Não autorizado' });
 
@@ -301,7 +309,6 @@ app.delete('/api/lancamentos/:id', (req, res) => {
     });
 });
 
-// Iniciar Servidor
 app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
 });
