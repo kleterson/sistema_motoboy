@@ -203,8 +203,8 @@ app.post('/api/admin/bloquear/:id', isAdmin, (req, res) => {
     });
 });
 
-// Excluir usuário do painel
-app.delete('/api/admin/excluir/:id', isAdmin, (req, res) => {
+// Excluir usuário do painel (Compatível com o frontend /api/admin/usuarios/:id)
+app.delete('/api/admin/usuarios/:id', isAdmin, (req, res) => {
     const userId = req.params.id;
 
     // Impede que o admin exclua a si mesmo acidentalmente
