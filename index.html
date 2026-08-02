@@ -140,7 +140,7 @@
                             <th>Nome</th>
                             <th>E-mail</th>
                             <th>Expira em</th>
-                            <th>Ação</th>
+                            <th>Ações</th>
                         </tr>
                     </thead>
                     <tbody id="tabela-admin-usuarios">
@@ -321,28 +321,38 @@
         async function verificarPainelAdmin(isAdmin) {
             if (isAdmin === 1) {
                 document.getElementById('painel-admin').style.display = 'block';
-                const res = await fetch('/api/admin/usuarios');
-                if (res.ok) {
-                    const usuarios = await res.json();
-                    const tbody = document.getElementById('tabela-admin-usuarios');
-                    tbody.innerHTML = '';
-                    
-                    usuarios.forEach(u => {
-                        const dataExp = new Date(u.data_expiracao).toLocaleDateString('pt-BR');
-                        tbody.innerHTML += `
-                            <tr>
-                                <td>${u.nome}</td>
-                                <td>${u.email}</td>
-                                <td>${dataExp}</td>
-                                <td>
-                                    <button onclick="renovarCliente(${u.id})" style="background: #00e676; color: #121212; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; cursor: pointer;">
-                                        ➕ Renovar 30 Dias
-                                    </button>
-                                </td>
-                            </tr>
-                        `;
-                    });
-                }
+                carregarUsuariosAdmin();
+            }
+        }
+
+        async function carregarUsuariosAdmin() {
+            const res = await fetch('/api/admin/usuarios');
+            if (res.ok) {
+                const usuarios = await res.json();
+                const tbody = document.getElementById('tabela-admin-usuarios');
+                tbody.innerHTML = '';
+                
+                usuarios.forEach(u => {
+                    const dataExp = new Date(u.data_expiracao).toLocaleDateString('pt-BR');
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${u.nome}</td>
+                            <td>${u.email}</td>
+                            <td>${dataExp}</td>
+                            <td>
+                                <button onclick="renovarCliente(${u.id})" style="background: #00e676; color: #121212; border: none; padding: 6px 10px; border-radius: 4px; font-weight: bold; cursor: pointer; margin-right: 5px;">
+                                    ➕ Renovar
+                                </button>
+                                <button onclick="bloquearCliente(${u.id})" style="background: #ff9d00; color: #121212; border: none; padding: 6px 10px; border-radius: 4px; font-weight: bold; cursor: pointer; margin-right: 5px;">
+                                    🔒 Bloquear
+                                </button>
+                                <button onclick="excluirCliente(${u.id})" style="background: #ff4444; color: #fff; border: none; padding: 6px 10px; border-radius: 4px; font-weight: bold; cursor: pointer;">
+                                    🗑️ Excluir
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                });
             }
         }
 
@@ -350,7 +360,25 @@
             const res = await fetch(`/api/admin/renovar/${id}`, { method: 'POST' });
             const data = await res.json();
             mostrarNotificacao('Sucesso!', data.mensagem);
-            setTimeout(() => location.reload(), 1500);
+            carregarUsuariosAdmin();
+        }
+
+        async function bloquearCliente(id) {
+            if (confirm('Deseja realmente bloquear este usuário?')) {
+                const res = await fetch(`/api/admin/bloquear/${id}`, { method: 'POST' });
+                const data = await res.json();
+                mostrarNotificacao('Aviso', data.mensagem);
+                carregarUsuariosAdmin();
+            }
+        }
+
+        async function excluirCliente(id) {
+            if (confirm('Tem certeza que deseja excluir permanentemente este usuário?')) {
+                const res = await fetch(`/api/admin/usuarios/${id}`, { method: 'DELETE' });
+                const data = await res.json();
+                mostrarNotificacao('Aviso', data.mensagem);
+                carregarUsuariosAdmin();
+            }
         }
 
         let isCadastro = false;
