@@ -54,6 +54,11 @@ app.use(session({
 // Servir arquivos estáticos da pasta atual (onde está o index.html)
 app.use(express.static(path.join(__dirname)));
 
+// Rota raiz para entregar o index.html corretamente
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 // Rota para verificar sessão atual
 app.get('/api/session', (req, res) => {
     if (req.session.userId) {
