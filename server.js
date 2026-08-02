@@ -51,8 +51,8 @@ app.use(session({
     cookie: { secure: false }
 }));
 
-// Servir arquivos estáticos da pasta atual (onde está o index.html)
-app.use(express.static(path.join(__dirname, 'PUBLIC')));
+// Servir arquivos estáticos da pasta atual
+app.use(express.static(path.join(__dirname)));
 
 // Rota raiz para entregar o index.html corretamente
 app.get('/', (req, res) => {
@@ -79,7 +79,7 @@ app.get('/api/session', (req, res) => {
     }
 });
 
-// Rota de Cadastro e Login com Bloqueio por IP
+// Rota de Cadastro e Login com Bloqueio por IP e Admin Automático para o 1º usuário
 app.post('/api/auth', async (req, res) => {
     const { acao, nome, email, senha } = req.body;
 
@@ -99,15 +99,23 @@ app.post('/api/auth', async (req, res) => {
                 const dataExpiracao = new Date();
                 dataExpiracao.setDate(dataExpiracao.getDate() + 3);
 
-                db.run(`INSERT INTO usuarios (nome, email, senha, data_expiracao, is_admin, ip_cadastro) VALUES (?, ?, ?, ?, 0, ?)`,
-                    [nome, email, senhaHash, dataExpiracao.toISOString(), ipUser],
-                    function(err) {
-                        if (err) {
-                            return res.json({ sucesso: false, mensagem: 'E-mail já cadastrado ou inválido!' });
+                // Verifica se é o primeiro usuário do sistema para torná-lo Admin automaticamente
+                db.get(`SELECT COUNT(*) as total`, [], (err, countRow) => {
+                    const isAdminUser = (countRow && countRow.total === 0) ? 1 : 0;
+
+                    db.run(`INSERT INTO usuarios (nome, email, senha, data_expiracao, is_admin, ip_cadastro) VALUES (?, ?, ?, ?, ?, ?)`,
+                        [nome, email, senhaHash, dataExpiracao.toISOString(), isAdminUser, ipUser],
+                        function(err) {
+                            if (err) {
+                                return res.json({ sucesso: false, mensagem: 'E-mail já cadastrado ou inválido!' });
+                            }
+                            res.json({ 
+                                sucesso: true, 
+                                mensagem: isAdminUser === 1 ? 'Conta de Administrador criada com sucesso!' : 'Cadastro realizado com sucesso! Você ganhou 3 dias de teste grátis.' 
+                            });
                         }
-                        res.json({ sucesso: true, mensagem: 'Cadastro realizado com sucesso! Você ganhou 3 dias de teste grátis.' });
-                    }
-                );
+                    );
+                });
             } catch (e) {
                 res.json({ sucesso: false, mensagem: 'Erro interno no servidor.' });
             }
@@ -250,7 +258,7 @@ app.delete('/api/lancamentos/:id', (req, res) => {
     const userId = req.session.userId;
 
     db.run(`DELETE FROM lancamentos WHERE id = ? AND usuario_id = ?`, [id, userId], function(err) {
-        if (err) return res.status(500).json({ sucesso: false });
+        if (err) return res.status(500).json({ erro: 'Erro ao atualizar.' });
         res.json({ sucesso: true });
     });
 });
