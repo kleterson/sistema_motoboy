@@ -17,7 +17,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
     }
 });
 
-// Criar tabelas necessárias se não existirem (com suporte a is_admin e ip_cadastro)
+// Criar tabelas necessárias se não existirem
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS usuarios (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,23 +59,19 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Rota para verificar sessão atual (Forçando Admin para facilitar seu acesso)
+// Rota para verificar sessão atual (Sem forçar admin em todo mundo)
 app.get('/api/session', (req, res) => {
     if (req.session.userId) {
         db.get(`SELECT * FROM usuarios WHERE id = ?`, [req.session.userId], (err, usuario) => {
             if (err || !usuario) {
                 return res.json({ logado: false });
             }
-
-            // Força a conta atual a virar Administradora no banco de dados
-            db.run(`UPDATE usuarios SET is_admin = 1 WHERE id = ?`, [usuario.id]);
-
             res.json({
                 logado: true,
                 nome: usuario.nome,
                 email: usuario.email,
                 data_expiracao: usuario.data_expiracao,
-                is_admin: 1
+                is_admin: usuario.is_admin
             });
         });
     } else {
@@ -83,7 +79,7 @@ app.get('/api/session', (req, res) => {
     }
 });
 
-// Rota de Cadastro e Login com Bloqueio por IP e Admin Automático para o 1º usuário
+// Rota de Cadastro e Login
 app.post('/api/auth', async (req, res) => {
     const { acao, nome, email, senha } = req.body;
 
@@ -103,23 +99,22 @@ app.post('/api/auth', async (req, res) => {
                 const dataExpiracao = new Date();
                 dataExpiracao.setDate(dataExpiracao.getDate() + 3);
 
-                // Verifica se é o primeiro usuário do sistema para torná-lo Admin automaticamente
-                db.get(`SELECT COUNT(*) as total`, [], (err, countRow) => {
-                    const isAdminUser = (countRow && countRow.total === 0) ? 1 : 0;
+                // SEU E-MAIL DE ADMIN EXCLUSIVO (Mude aqui se quiser outro e-mail para ser o chefe)
+                const emailAdminMestre = 'admin@gmail.com'; 
+                const isAdminUser = (email.toLowerCase() === emailAdminMestre) ? 1 : 0;
 
-                    db.run(`INSERT INTO usuarios (nome, email, senha, data_expiracao, is_admin, ip_cadastro) VALUES (?, ?, ?, ?, ?, ?)`,
-                        [nome, email, senhaHash, dataExpiracao.toISOString(), isAdminUser, ipUser],
-                        function(err) {
-                            if (err) {
-                                return res.json({ sucesso: false, mensagem: 'E-mail já cadastrado ou inválido!' });
-                            }
-                            res.json({ 
-                                sucesso: true, 
-                                mensagem: isAdminUser === 1 ? 'Conta de Administrador criada com sucesso!' : 'Cadastro realizado com sucesso! Você ganhou 3 dias de teste grátis.' 
-                            });
+                db.run(`INSERT INTO usuarios (nome, email, senha, data_expiracao, is_admin, ip_cadastro) VALUES (?, ?, ?, ?, ?, ?)`,
+                    [nome, email, senhaHash, dataExpiracao.toISOString(), isAdminUser, ipUser],
+                    function(err) {
+                        if (err) {
+                            return res.json({ sucesso: false, mensagem: 'E-mail já cadastrado ou inválido!' });
                         }
-                    );
-                });
+                        res.json({ 
+                            sucesso: true, 
+                            mensagem: isAdminUser === 1 ? 'Conta de Administrador criada com sucesso!' : 'Cadastro realizado com sucesso! Você ganhou 3 dias de teste grátis.' 
+                        });
+                    }
+                );
             } catch (e) {
                 res.json({ sucesso: false, mensagem: 'Erro interno no servidor.' });
             }
@@ -137,21 +132,21 @@ app.post('/api/auth', async (req, res) => {
 
             req.session.userId = usuario.id;
             req.session.nome = usuario.nome;
-            req.session.is_admin = 1; // Força sessão como admin
+            req.session.is_admin = usuario.is_admin; // Salva o status real de admin do banco
             res.json({ sucesso: true });
         });
     }
 });
 
 // ==========================================
-// ROTAS DO PAINEL ADMINISTRADOR
+// ROTAS DO PAINEL ADMINISTRADOR (Protegidas)
 // ==========================================
 
 function isAdmin(req, res, next) {
-    if (req.session && (req.session.is_admin === 1 || req.session.userId)) {
+    if (req.session && req.session.is_admin === 1) {
         return next();
     }
-    return res.status(403).json({ sucesso: false, mensagem: 'Acesso negado. Apenas administradores.' });
+    return res.status(403).json({ sucesso: false, mensagem: 'Acesso negado. Apenas o administrador mestre.' });
 }
 
 app.get('/api/admin/usuarios', isAdmin, (req, res) => {
