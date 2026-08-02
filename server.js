@@ -52,7 +52,7 @@ app.use(session({
 }));
 
 // Servir arquivos estáticos da pasta atual (onde está o index.html)
-app.use(express.static(path.join(__dirname)));
+app.use(express.static(path.join(__dirname, 'PUBLIC')));
 
 // Rota raiz para entregar o index.html corretamente
 app.get('/', (req, res) => {
