@@ -18,6 +18,17 @@ const db = new sqlite3.Database(dbPath, (err) => {
     }
 });
 
+db.serialize(() => {
+    db.run(`CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT,
+        email TEXT UNIQUE,
+        senha TEXT,
+        data_expiracao DATETIME,
+        ip_cadastro TEXT
+    )`);
+    // ... resto das tabelas
+});
 // Criar tabelas necessárias se não existirem
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS usuarios (
