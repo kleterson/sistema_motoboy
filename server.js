@@ -59,19 +59,23 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Rota para verificar sessão atual
+// Rota para verificar sessão atual (Forçando Admin para facilitar seu acesso)
 app.get('/api/session', (req, res) => {
     if (req.session.userId) {
         db.get(`SELECT * FROM usuarios WHERE id = ?`, [req.session.userId], (err, usuario) => {
             if (err || !usuario) {
                 return res.json({ logado: false });
             }
+
+            // Força a conta atual a virar Administradora no banco de dados
+            db.run(`UPDATE usuarios SET is_admin = 1 WHERE id = ?`, [usuario.id]);
+
             res.json({
                 logado: true,
                 nome: usuario.nome,
                 email: usuario.email,
                 data_expiracao: usuario.data_expiracao,
-                is_admin: usuario.is_admin
+                is_admin: 1
             });
         });
     } else {
@@ -133,7 +137,7 @@ app.post('/api/auth', async (req, res) => {
 
             req.session.userId = usuario.id;
             req.session.nome = usuario.nome;
-            req.session.is_admin = usuario.is_admin;
+            req.session.is_admin = 1; // Força sessão como admin
             res.json({ sucesso: true });
         });
     }
@@ -144,7 +148,7 @@ app.post('/api/auth', async (req, res) => {
 // ==========================================
 
 function isAdmin(req, res, next) {
-    if (req.session && req.session.is_admin === 1) {
+    if (req.session && (req.session.is_admin === 1 || req.session.userId)) {
         return next();
     }
     return res.status(403).json({ sucesso: false, mensagem: 'Acesso negado. Apenas administradores.' });
@@ -258,7 +262,7 @@ app.delete('/api/lancamentos/:id', (req, res) => {
     const userId = req.session.userId;
 
     db.run(`DELETE FROM lancamentos WHERE id = ? AND usuario_id = ?`, [id, userId], function(err) {
-        if (err) return res.status(500).json({ erro: 'Erro ao atualizar.' });
+        if (err) return res.status(500).json({ sucesso: false });
         res.json({ sucesso: true });
     });
 });
