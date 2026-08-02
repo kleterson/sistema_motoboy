@@ -8,23 +8,48 @@
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background: #121212; color: #eee; min-height: 100vh; padding-bottom: 40px; }
         
-        /* Cabeçalho atualizado para acomodar o relógio ao lado do título */
         header { background: #1e1e1e; padding: 15px 20px; border-bottom: 3px solid #ff7300; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
-        .header-left { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+        .header-left { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
         header h1 { font-size: 20px; color: #ff7300; }
         #relogio-brasilia { font-size: 13px; font-weight: bold; color: #aaa; background: #2a2a2a; padding: 5px 10px; border-radius: 6px; border: 1px solid #444; }
 
-        .user-info { display: flex; align-items: center; gap: 15px; }
+        .user-info { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        #contador-expiracao { font-size: 12px; font-weight: bold; color: #ff9d00; background: #2a2a2a; padding: 5px 10px; border-radius: 6px; border: 1px solid #ff7300; }
         .logout-btn { color: #ff4444; text-decoration: none; font-weight: bold; background: #ff444422; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
 
         .container { max-width: 1000px; margin: 20px auto; padding: 0 15px; }
         
-        /* Estilos Login */
         .login-body { background: linear-gradient(rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.85)), url('https://images.unsplash.com/photo-1558981806-ec527fa84c39?q=80&w=1200&auto=format&fit=crop') center/cover no-repeat fixed; display: flex; align-items: center; justify-content: center; height: 100vh; }
-        .card-login { background: rgba(30, 30, 30, 0.95); border-radius: 16px; padding: 30px; width: 100%; max-width: 420px; color: #fff; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #ff7300; }
+        .card-login { background: rgba(30, 30, 30, 0.95); border-radius: 16px; padding: 30px; width: 100%; max-width: 420px; color: #fff; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #ff7300; position: relative; }
         .msg { background: #ff730022; border: 1px solid #ff7300; padding: 10px; border-radius: 8px; color: #ff9d00; text-align: center; margin-bottom: 15px; font-size: 14px; }
 
-        /* Cards & Componentes Dashboard */
+        /* Nova Notificação Bonita */
+        #toast-notificacao {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #1e1e1e;
+            border-left: 5px solid #00e676;
+            color: #fff;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.6);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transform: translateX(120%);
+            transition: transform 0.4s ease-in-out;
+            max-width: 350px;
+            border-top: 1px solid #333;
+            border-right: 1px solid #333;
+            border-bottom: 1px solid #333;
+        }
+        #toast-notificacao.show { transform: translateX(0); }
+        .toast-icon { font-size: 20px; }
+        .toast-content .toast-title { font-weight: bold; font-size: 14px; color: #00e676; margin-bottom: 2px; }
+        .toast-content .toast-desc { font-size: 12px; color: #ccc; }
+
         .cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-bottom: 25px; }
         .card-stat { background: #1e1e1e; border-radius: 12px; padding: 20px; border-left: 5px solid #ff7300; }
         .card-stat h3 { font-size: 14px; color: #aaa; margin-bottom: 8px; }
@@ -53,6 +78,15 @@
     </style>
 </head>
 <body id="body-app">
+
+    <!-- Caixa de Notificação Bonita (Toast) -->
+    <div id="toast-notificacao">
+        <div class="toast-icon">🎉</div>
+        <div class="toast-content">
+            <div class="toast-title" id="toast-title">Sucesso!</div>
+            <div class="toast-desc" id="toast-desc">Mensagem aqui.</div>
+        </div>
+    </div>
 
     <!-- Tela de Login / Cadastro -->
     <div id="auth-container" class="login-body" style="display: none;">
@@ -86,11 +120,12 @@
     <div id="dashboard-container" style="display: none;">
         <header>
             <div class="header-left">
-                <h1>🏍️ 99 Food Control</h1>
+                <h1>🏍️ 99 Food</h1>
                 <div id="relogio-brasilia">Carregando...</div>
             </div>
             <div class="user-info">
                 <span>Olá, <strong id="user-name-display"></strong></span>
+                <div id="contador-expiracao">⏳ Carregando...</div>
                 <a href="/api/logout" class="logout-btn">Sair</a>
             </div>
         </header>
@@ -196,7 +231,18 @@
     <script>
         document.getElementById('l-data').value = new Date().toISOString().split('T')[0];
 
-        // Relógio em tempo real - Horário de Brasília
+        let dataExpiracaoGlobal = null;
+
+        function mostrarNotificacao(titulo, descricao) {
+            const toast = document.getElementById('toast-notificacao');
+            document.getElementById('toast-title').innerText = titulo;
+            document.getElementById('toast-desc').innerText = descricao;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 4000);
+        }
+
         function atualizarRelogio() {
             const agora = new Date();
             const opcoes = {
@@ -212,6 +258,22 @@
             const relogioElemento = document.getElementById('relogio-brasilia');
             if (relogioElemento) {
                 relogioElemento.innerHTML = `🕒 ${formatoBrasil}`;
+            }
+
+            if (dataExpiracaoGlobal) {
+                const diff = new Date(dataExpiracaoGlobal) - agora;
+                const contadorEl = document.getElementById('contador-expiracao');
+                if (diff <= 0) {
+                    contadorEl.innerHTML = `⚠️ Teste Expirado`;
+                    contadorEl.style.color = '#ff4444';
+                    contadorEl.style.borderColor = '#ff4444';
+                } else {
+                    const dias = Math.floor(diff / (1000 * 60 * 60 * 24));
+                    const horas = Math.floor((diff / (1000 * 60 * 60)) % 24);
+                    const minutos = Math.floor((diff / 1000 / 60) % 60);
+                    const segundos = Math.floor((diff / 1000) % 60);
+                    contadorEl.innerHTML = `⏳ Teste: ${dias}d ${horas}h ${minutos}m ${segundos}s`;
+                }
             }
         }
         setInterval(atualizarRelogio, 1000);
@@ -229,6 +291,7 @@
                 document.getElementById('dashboard-container').style.display = 'block';
                 document.getElementById('body-app').style.background = '#121212';
                 document.getElementById('user-name-display').innerText = data.nome;
+                dataExpiracaoGlobal = data.data_expiracao;
                 carregarDados();
             } else {
                 document.getElementById('auth-container').style.display = 'flex';
@@ -261,7 +324,7 @@
 
             if (data.sucesso) {
                 if (acao === 'cadastrar') {
-                    alert('Cadastro realizado com sucesso! Você ganhou 3 dias de teste grátis.');
+                    mostrarNotificacao('Conta Criada!', 'Cadastro realizado com sucesso! Você ganhou 3 dias de teste grátis.');
                     alternarTelaAuth();
                 } else {
                     verificarSessao();
@@ -287,7 +350,6 @@
             document.getElementById('val-mes').innerText = formatarMoeda(data.ganhos_mes - data.gastos_mes);
             document.getElementById('sub-mes').innerText = `Ganhos: ${formatarMoeda(data.ganhos_mes)} | Gastos: ${formatarMoeda(data.gastos_mes)}`;
 
-            // Metas
             const pctSemana = Math.min(100, ((data.ganhos_semana / 1000) * 100)).toFixed(1);
             const pctMes = Math.min(100, ((data.ganhos_mes / 4000) * 100)).toFixed(1);
 
@@ -297,7 +359,6 @@
             document.getElementById('txt-meta-mes').innerHTML = `<strong>${formatarMoeda(data.ganhos_mes)}</strong> (${pctMes}%)`;
             document.getElementById('bar-mes').style.width = pctMes + '%';
 
-            // Tabela
             const tbody = document.getElementById('tabela-historico');
             tbody.innerHTML = '';
             if (data.historico.length === 0) {
