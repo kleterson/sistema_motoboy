@@ -5,7 +5,6 @@ const bcrypt = require('bcrypt');
 const path = require('path');
 
 const app = express();
-// Porta dinâmica exigida pelo Render, com fallback para 3000 localmente
 const PORT = process.env.PORT || 3000;
 
 // Configuração do banco de dados SQLite
@@ -18,6 +17,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
     }
 });
 
+// Criar tabelas necessárias se não existirem (com suporte a ip_cadastro)
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS usuarios (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -26,17 +26,6 @@ db.serialize(() => {
         senha TEXT,
         data_expiracao DATETIME,
         ip_cadastro TEXT
-    )`);
-    // ... resto das tabelas
-});
-// Criar tabelas necessárias se não existirem
-db.serialize(() => {
-    db.run(`CREATE TABLE IF NOT EXISTS usuarios (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nome TEXT,
-        email TEXT UNIQUE,
-        senha TEXT,
-        data_expiracao DATETIME
     )`);
 
     db.run(`CREATE TABLE IF NOT EXISTS lancamentos (
@@ -58,11 +47,11 @@ app.use(session({
     secret: 'motoboy_secret_key_99food',
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: false } // Mude para true se usar HTTPS estrito no Render (opcional)
+    cookie: { secure: false }
 }));
 
-// Servir arquivos estáticos da pasta 'public'
-app.use(express.static(path.join(__dirname, 'public')));
+// Servir arquivos estáticos da pasta atual (onde está o index.html)
+app.use(express.static(path.join(__dirname)));
 
 // Rota para verificar sessão atual
 app.get('/api/session', (req, res) => {
@@ -83,30 +72,43 @@ app.get('/api/session', (req, res) => {
     }
 });
 
-// Rota de Cadastro e Login
+// Rota de Cadastro e Login com Bloqueio por IP
 app.post('/api/auth', async (req, res) => {
     const { acao, nome, email, senha } = req.body;
 
     if (acao === 'cadastrar') {
-        try {
-            const senhaHash = await bcrypt.hash(senha, 10);
-            
-            // Define data de expiração para 3 dias a partir de agora
-            const dataExpiracao = new Date();
-            dataExpiracao.setDate(dataExpiracao.getDate() + 3);
+        // Pega o IP real do usuário (compatível com proxies como o Render)
+        const ipUser = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
-            db.run(`INSERT INTO usuarios (nome, email, senha, data_expiracao) VALUES (?, ?, ?, ?)`,
-                [nome, email, senhaHash, dataExpiracao.toISOString()],
-                function(err) {
-                    if (err) {
-                        return res.json({ sucesso: false, mensagem: 'E-mail já cadastrado ou inválido!' });
+        // Verifica se já existe um cadastro efetuado por este IP
+        db.get(`SELECT id FROM usuarios WHERE ip_cadastro = ?`, [ipUser], async (err, row) => {
+            if (row) {
+                return res.json({ 
+                    sucesso: false, 
+                    mensagem: 'Você já utilizou o período de teste gratuito neste dispositivo ou rede!' 
+                });
+            }
+
+            try {
+                const senhaHash = await bcrypt.hash(senha, 10);
+                
+                // Define 3 dias de teste grátis
+                const dataExpiracao = new Date();
+                dataExpiracao.setDate(dataExpiracao.getDate() + 3);
+
+                db.run(`INSERT INTO usuarios (nome, email, senha, data_expiracao, ip_cadastro) VALUES (?, ?, ?, ?, ?)`,
+                    [nome, email, senhaHash, dataExpiracao.toISOString(), ipUser],
+                    function(err) {
+                        if (err) {
+                            return res.json({ sucesso: false, mensagem: 'E-mail já cadastrado ou inválido!' });
+                        }
+                        res.json({ sucesso: true, mensagem: 'Cadastro realizado com sucesso! Você ganhou 3 dias de teste grátis.' });
                     }
-                    res.json({ sucesso: true, mensagem: 'Cadastro realizado com sucesso! Você ganhou 3 dias de teste grátis.' });
-                }
-            );
-        } catch (e) {
-            res.json({ sucesso: false, mensagem: 'Erro interno no servidor.' });
-        }
+                );
+            } catch (e) {
+                res.json({ sucesso: false, mensagem: 'Erro interno no servidor.' });
+            }
+        });
     } else if (acao === 'login') {
         db.get(`SELECT * FROM usuarios WHERE email = ?`, [email], async (err, usuario) => {
             if (err || !usuario) {
@@ -131,7 +133,7 @@ app.get('/api/logout', (req, res) => {
     });
 });
 
-// Rota para buscar dados do dashboard (Lançamentos e Resumos)
+// Rota para buscar dados do dashboard
 app.get('/api/dados', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ erro: 'Não autorizado' });
 
@@ -147,23 +149,20 @@ app.get('/api/dados', (req, res) => {
         let ganhos_mes = 0;
         let gastos_mes = 0;
 
-        const mesAtual = hoje.substring(0, 7); // YYYY-MM
+        const mesAtual = hoje.substring(0, 7);
 
         rows.forEach(item => {
-            // Lançamentos de hoje
             if (item.data_lancamento === hoje) {
                 if (item.tipo === 'ganho') saldo_hoje += item.valor;
                 if (item.tipo === 'gasto') saldo_hoje -= item.valor;
             }
 
-            // Mês atual
             if (item.data_lancamento.startsWith(mesAtual)) {
                 if (item.tipo === 'ganho') ganhos_mes += item.valor;
                 if (item.tipo === 'gasto') gastos_mes += item.valor;
             }
 
-            // Simplificação para semana (considerando os últimos 7 dias ou mês atual - ajuste conforme preferência)
-            if (item.tipo === 'ganho') ganhos_semana += item.valor; // Ajuste simplificado de demonstração
+            if (item.tipo === 'ganho') ganhos_semana += item.valor;
             if (item.tipo === 'gasto') gastos_semana += item.valor;
         });
 
@@ -208,7 +207,7 @@ app.delete('/api/lancamentos/:id', (req, res) => {
     });
 });
 
-// Iniciar Servidor escutando na porta correta do Render
+// Iniciar Servidor
 app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
 });
