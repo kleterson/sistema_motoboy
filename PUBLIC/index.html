@@ -131,6 +131,24 @@
         </header>
 
         <div class="container">
+            <!-- Painel Administrativo -->
+            <div id="painel-admin" style="display: none; background: #1e1e1e; padding: 20px; border-radius: 12px; margin-bottom: 25px; border: 1px solid #ff7300;">
+                <h2>👑 Painel do Administrador - Gestão de Clientes</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>E-mail</th>
+                            <th>Expira em</th>
+                            <th>Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela-admin-usuarios">
+                        <tr><td colspan="4" style="text-align: center; color: #888;">Carregando usuários...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
             <div class="cards-grid">
                 <div class="card-stat">
                     <h3>Lucro Líquido Hoje</h3>
@@ -293,10 +311,46 @@
                 document.getElementById('user-name-display').innerText = data.nome;
                 dataExpiracaoGlobal = data.data_expiracao;
                 carregarDados();
+                verificarPainelAdmin(data.is_admin);
             } else {
                 document.getElementById('auth-container').style.display = 'flex';
                 document.getElementById('dashboard-container').style.display = 'none';
             }
+        }
+
+        async function verificarPainelAdmin(isAdmin) {
+            if (isAdmin === 1) {
+                document.getElementById('painel-admin').style.display = 'block';
+                const res = await fetch('/api/admin/usuarios');
+                if (res.ok) {
+                    const usuarios = await res.json();
+                    const tbody = document.getElementById('tabela-admin-usuarios');
+                    tbody.innerHTML = '';
+                    
+                    usuarios.forEach(u => {
+                        const dataExp = new Date(u.data_expiracao).toLocaleDateString('pt-BR');
+                        tbody.innerHTML += `
+                            <tr>
+                                <td>${u.nome}</td>
+                                <td>${u.email}</td>
+                                <td>${dataExp}</td>
+                                <td>
+                                    <button onclick="renovarCliente(${u.id})" style="background: #00e676; color: #121212; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; cursor: pointer;">
+                                        ➕ Renovar 30 Dias
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                }
+            }
+        }
+
+        async function renovarCliente(id) {
+            const res = await fetch(`/api/admin/renovar/${id}`, { method: 'POST' });
+            const data = await res.json();
+            mostrarNotificacao('Sucesso!', data.mensagem);
+            setTimeout(() => location.reload(), 1500);
         }
 
         let isCadastro = false;
