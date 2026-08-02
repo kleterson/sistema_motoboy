@@ -96,20 +96,17 @@ app.post('/api/auth', async (req, res) => {
 
             try {
                 const senhaHash = await bcrypt.hash(senha, 10);
-                const dataExpiracao = new Date();
-                dataExpiracao.setDate(dataExpiracao.getDate() + 3);
-
-                // SEU E-MAIL DE ADMIN EXCLUSIVO (Mude aqui se quiser outro e-mail para ser o chefe)
+                
                 // SEU E-MAIL DE ADMIN EXCLUSIVO
-const emailAdminMestre = 'admin@gmail.com'; 
-const isAdminUser = (email.toLowerCase() === emailAdminMestre) ? 1 : 0;
+                const emailAdminMestre = 'admin@gmail.com'; 
+                const isAdminUser = (email.toLowerCase() === emailAdminMestre) ? 1 : 0;
 
-const dataExpiracao = new Date();
-if (isAdminUser === 1) {
-    dataExpiracao.setFullYear(dataExpiracao.getFullYear() + 100); // Admin ilimitado (100 anos)
-} else {
-    dataExpiracao.setDate(dataExpiracao.getDate() + 3); // Usuário comum (3 dias)
-}
+                const dataExpiracao = new Date();
+                if (isAdminUser === 1) {
+                    dataExpiracao.setFullYear(dataExpiracao.getFullYear() + 100); // Admin ilimitado (100 anos)
+                } else {
+                    dataExpiracao.setDate(dataExpiracao.getDate() + 3); // Usuário comum (3 dias)
+                }
 
                 db.run(`INSERT INTO usuarios (nome, email, senha, data_expiracao, is_admin, ip_cadastro) VALUES (?, ?, ?, ?, ?, ?)`,
                     [nome, email, senhaHash, dataExpiracao.toISOString(), isAdminUser, ipUser],
